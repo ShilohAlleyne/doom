@@ -102,27 +102,52 @@
 (use-package! typst-ts-mode
   :mode ("\\.typ\\'" . typst-ts-mode))
 
-;; Vterm Color & UI Fixes
-(after! vterm
-  ;; 1. Force the layout buffer to inherit the exact font and text size definitions
-  (add-hook 'vterm-mode-hook
-            (lambda ()
-              (setq-local buffer-face-mode-face `(:family ,(face-attribute 'default :font) :height 22))
-              (buffer-face-mode 1)))
+;; Dired improvements with Dirvish
+(use-package dired
+  :config
+  (setq dired-listing-switches
+        "-l --almost-all --human-readable --group-directories-first --no-group")
+  ;; this command is useful when you want to close the window of `dirvish-side'
+  ;; automatically when opening a file
+  (put 'dired-find-alternate-file 'disabled nil))
 
-  ;; 2. The Missing Link: Override ANSI terminal sequences with your theme palette
-  (setq vterm-eval-cmds nil) ; Security setting
+(use-package dirvish
+  :ensure t
+  :init
+  (dirvish-override-dired-mode)
+  :config
+  ;; (dirvish-peek-mode)             ; Preview files in minibuffer
+  ;; (dirvish-side-follow-mode)      ; similar to `treemacs-follow-mode'
+  (setq dirvish-mode-line-format
+        '(:left (sort symlink) :right (omit yank index)))
+  (setq dirvish-attributes           ; The order *MATTERS* for some attributes
+        '(vc-state subtree-state nerd-icons collapse git-msg file-time file-size)
+        dirvish-side-attributes
+        '(vc-state nerd-icons collapse file-size))
+  ;; open large directory (over 20000 files) asynchronously with `fd' command
+  (setq dirvish-large-directory-threshold 20000)
+  :bind ; Bind `dirvish-fd|dirvish-side|dirvish-dwim' as you see fit
+  (:map doom-leader-map
+   ("-" . dirvish)
+   :map dirvish-mode-map               ; Dirvish inherits `dired-mode-map'
+   (";"   . dired-up-directory)        ; So you can adjust `dired' bindings here
+   ("?"   . dirvish-dispatch)          ; [?] a helpful cheatsheet
+   ("a"   . dirvish-setup-menu)        ; [a]ttributes settings:`t' toggles mtime, `f' toggles fullframe, etc.
+   ("f"   . dirvish-file-info-menu)    ; [f]ile info
+   ("o"   . dirvish-quick-access)      ; [o]pen `dirvish-quick-access-entries'
+   ("s"   . dirvish-quicksort)         ; [s]ort flie list
+   ("r"   . dirvish-history-jump)      ; [r]ecent visited
+   ("l"   . dirvish-ls-switches-menu)  ; [l]s command flags
+   ("v"   . dirvish-vc-menu)           ; [v]ersion control commands
+   ("*"   . dirvish-mark-menu)
+   ("y"   . dirvish-yank-menu)
+   ("N"   . dirvish-narrow)
+   ("^"   . dirvish-history-last)
+   ("TAB" . dirvish-subtree-toggle)
+   ("M-f" . dirvish-history-go-forward)
+   ("M-b" . dirvish-history-go-backward)
+   ("M-e" . dirvish-emerge-menu)))
 
-  ;; Dynamically bind vterm colors to active Doom theme attributes
-  (custom-set-faces!
-    `(vterm-color-black   :foreground ,(doom-color 'bg)      :background ,(doom-color 'bg))
-    `(vterm-color-red     :foreground ,(doom-color 'red)     :background ,(doom-color 'red))
-    `(vterm-color-green   :foreground ,(doom-color 'green)   :background ,(doom-color 'green))
-    `(vterm-color-yellow  :foreground ,(doom-color 'yellow)  :background ,(doom-color 'yellow))
-    `(vterm-color-blue    :foreground ,(doom-color 'blue)    :background ,(doom-color 'blue))
-    `(vterm-color-magenta :foreground ,(doom-color 'magenta) :background ,(doom-color 'magenta))
-    `(vterm-color-cyan    :foreground ,(doom-color 'cyan)    :background ,(doom-color 'cyan))
-    `(vterm-color-white   :foreground ,(doom-color 'fg)      :background ,(doom-color 'fg))))
 
 ;; --- Code ---
 ;; (use-package indent-bars
@@ -150,6 +175,12 @@
 (add-hook 'clojure-mode-hook    #'lisp-indentation)
 (add-hook 'scheme-mode-hook     #'lisp-indentation)
 (add-hook 'lisp-mode-hook       #'lisp-indentation)
+
+(use-package outline-indent
+  :commands outline-indent-minor-mode
+  :custom
+  (outline-indent-ellipsis " ▼"))
+
 
 ;;; --- Note Taking ---
 (setq org-directory "~/org/")
@@ -205,8 +236,11 @@
 (setq ispell-dictionary "en_GB")
 
 ;; Enable for Org and Markdown
-(add-hook 'org-mode-hook #'flyspell-mode)
-(add-hook 'markdown-mode-hook #'flyspell-mode)
+(remove-hook! 'text-mode-hook #'flyspell-mode)
+;; Enable flyspell specifically for these modes
+(add-hook! '(org-mode-hook markdown-mode-hook mu4e-compose-mode-hook)
+  #'flyspell-mode)
+
 
 ;; --- Centring ---
 (setq-default olivetti-body-width 120)
@@ -230,30 +264,79 @@
   (unless (server-running-p)
     (server-start)))
 
-(setq vterm-shell "zsh")
+(use-package ghostel
+  :ensure t)
 
-;; Vterm Color & UI Fixes
-(after! vterm
-  (add-hook 'vterm-mode-hook
-            (lambda ()
-              (setq-local face-remapping-alist
-                          `((default (:background ,(face-attribute 'default :background))
-                                     (:foreground ,(face-attribute 'default :foreground)))))))
+(use-package! evil-ghostel
+  :after (ghostel evil)
+  :hook (ghostel-mode . evil-ghostel-mode))
 
-  (setq vterm-term-environment-variable "xterm-256color")
+;; (add-hook 'ghostel-mode-hook
+;;           (lambda ()
+;;             ;; Remove the left/right fringe borders
+;;             (set-window-fringes (selected-window) 0 0)
+;;             ;; Keep the terminal snapped to the bottom
+;;             (setq-local scroll-conservatively 101)
+;;             ;; Ensure no extra margins
+;;             (setq-local left-margin-width 0)
+;;             (setq-local right-margin-width 0)))
 
-  (add-hook 'vterm-mode-hook
-            (lambda ()
-              (setq-local buffer-face-mode-face `(:family ,(face-attribute 'default :font) :height 22))
-              (buffer-face-mode 1))))
 
-(setq vterm-kill-buffer-on-exit t  ; (Optional but good) Clean up buffer on exit
-      window-adjust-process-window-size-function nil) ; Disables the rigid grid enforcement
+;; --- Keybindings (SPC o t / SPC o T) ---
+(defun +shaolin/ghostel-at-project-root ()
+  "Launch ghostel at the project root."
+  (interactive)
+  (let ((default-directory (projectile-project-root)))
+    (ghostel)))
+
+(map! :leader
+      :desc "Ghostel terminal" "o T" #'+shaolin/ghostel-at-project-root
+      :desc "Ghostel popup"    "o t" (lambda ()
+                                             (interactive)
+                                             (+popup/buffer (save-window-excursion
+                                                              (+shaolin/ghostel-at-project-root)))))
+
+
+(add-hook 'ghostel-mode-hook
+          (lambda ()
+            ;; Keep your margins, but clear their specific background/fringe overrides
+            (setq-local scroll-conservatively 101)
+
+            ;; Fetch current background
+            (let ((my-bg (face-background 'default)))
+
+              ;; 1. Remap the default background
+              (face-remap-add-relative 'default :background my-bg)
+
+              ;; 2. Force the Fringes to match the background
+              (face-remap-add-relative 'fringe :background my-bg)
+
+              ;; 3. Force the Margins to match the background
+              ;; This ensures they exist but appear "invisible"
+              (face-remap-add-relative 'left-margin :background my-bg)
+              (face-remap-add-relative 'right-margin :background my-bg)
+
+              ;; 4. Override terminal-specific faces that might fight the theme
+              (face-remap-add-relative 'term-default-bg-color :background my-bg))))
 
 ;; PDFs
 (after! pdf-tools
   (setq pdf-info-epdfinfo-program (executable-find "epdfinfo")))
 
+;; Email
+(set-email-account! "gmail"
+  '((mu4e-sent-folder       . "/[Gmail]/Sent Mail")
+    (mu4e-drafts-folder     . "/[Gmail]/Drafts")
+    (mu4e-trash-folder      . "/[Gmail]/Bin")
+    (mu4e-refile-folder     . "/[Gmail]/All Mail")
+    (smtpmail-smtp-user     . "shiloh.t.alleyne@gmail.com"))
+  t) ;; The 't' makes this your default account
+
+(setq send-mail-function 'smtpmail-send-it
+      message-send-mail-function 'smtpmail-send-it
+      smtpmail-smtp-server "smtp.gmail.com"
+      smtpmail-smtp-service 587
+      smtpmail-stream-type 'starttls)
 
 ;; --- WSL ---
 (setq default-directory "/home/shiloh/")

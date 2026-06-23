@@ -15,11 +15,20 @@
   :recipe (:host github
   :repo "ronisbr/doom-nano-modeline"))
 
+(package! dirvish
+  :recipe (:host github :repo "alexluigit/dirvish"))
 
 ;; --- Code ---
 (package! vundo
   :recipe (:host github :repo "casouri/vundo"))
 
+(package! outline-indent
+  :recipe (:host github :repo "jamescherti/outline-indent.el"))
+
+(package! ghostel
+  :recipe (:host github :repo "dakra/ghostel"))
+
+(package! evil-ghostel)
 
 ;; --- Note Taking ---
 (package! denote)
