@@ -181,6 +181,9 @@
   :custom
   (outline-indent-ellipsis " ▼"))
 
+(after! with-editor
+  (setq with-editor-emacsclient-executable "emacsclient")
+  (setq with-editor-launcher 'with-editor-create-frame))
 
 ;;; --- Note Taking ---
 (setq org-directory "~/org/")
@@ -271,17 +274,6 @@
   :after (ghostel evil)
   :hook (ghostel-mode . evil-ghostel-mode))
 
-;; (add-hook 'ghostel-mode-hook
-;;           (lambda ()
-;;             ;; Remove the left/right fringe borders
-;;             (set-window-fringes (selected-window) 0 0)
-;;             ;; Keep the terminal snapped to the bottom
-;;             (setq-local scroll-conservatively 101)
-;;             ;; Ensure no extra margins
-;;             (setq-local left-margin-width 0)
-;;             (setq-local right-margin-width 0)))
-
-
 ;; --- Keybindings (SPC o t / SPC o T) ---
 (defun +shaolin/ghostel-at-project-root ()
   "Launch ghostel at the project root."
@@ -318,6 +310,9 @@
 
               ;; 4. Override terminal-specific faces that might fight the theme
               (face-remap-add-relative 'term-default-bg-color :background my-bg))))
+
+
+
 
 ;; PDFs
 (after! pdf-tools
