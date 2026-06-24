@@ -86,6 +86,52 @@
   '(org-table           :inherit fixed-pitch)
   '(org-formula         :inherit fixed-pitch :foreground "#999999"))
 
+;; A Scholar's Reading List Configuration
+(after! org
+  (setq org-agenda-custom-commands
+        '(("d" "Daily Dashboard"
+           ((agenda "" ((org-agenda-span 'day)))
+            (tags-todo "CATEGORY!=\"reading\""
+                       ((org-agenda-overriding-header "Tasks")))
+            (tags-todo "CATEGORY=\"reading\""
+                       ((org-agenda-overriding-header "Reading List"))))))))
+
+(after! org
+  (defun shaolin/auto-display-reading-clock ()
+    "Automatically turn on org-clock-display for the reading list."
+    (when (and (buffer-file-name)
+               (string-suffix-p "reading-list.org" (buffer-file-name)))
+      ;; Wrap in save-excursion so your cursor doesn't jump around
+      (save-excursion
+        (org-clock-display))))
+
+  ;; 1. Run automatically when you open the file
+  (add-hook 'org-mode-hook #'shaolin/auto-display-reading-clock)
+
+  ;; 2. Refresh the totals automatically every time you stop the timer (clock out)
+  (add-hook 'org-clock-out-hook #'shaolin/auto-display-reading-clock))
+
+(after! org
+  (defun shaolin/org-focus-current-reading ()
+    "Collapse the file and reveal only items marked CURRENT."
+    (when (and (buffer-file-name)
+               (string-suffix-p "reading-list.org" (buffer-file-name)))
+
+      ;; 1. Fold everything down to just the top-level headers
+      (org-overview)
+
+      ;; 2. Find all CURRENT headings and unfold them
+      (org-map-entries
+       (lambda ()
+         (org-show-context)   ;; Expand parent folders so this heading is visible
+         (org-show-entry)     ;; Expand the properties/logbook directly underneath it
+         (org-show-children)) ;; Expand its immediate child headings (e.g., chapters)
+       "TODO=\"CURRENT\"" 'file)))
+
+  ;; Run this automatically when opening an Org mode file
+  (add-hook 'org-mode-hook #'shaolin/org-focus-current-reading))
+
+
 ;; Markdown Changes
 (custom-set-faces!
   ;; Code blocks
@@ -332,6 +378,18 @@
       smtpmail-smtp-server "smtp.gmail.com"
       smtpmail-smtp-service 587
       smtpmail-stream-type 'starttls)
+
+(after! doom-modeline
+  ;; Shows unread mail count in your Doom nano modeline
+  (setq doom-modeline-mu4e t))
+
+(after! mu4e
+  ;; Sleek Unicode thread tree indicators
+  (setq mu4e-use-fancy-chars t
+        mu4e-headers-has-child-prefix '("+" . "❯ ")
+        mu4e-headers-empty-parent-prefix '("-" . "  ")
+        mu4e-headers-first-child-prefix '("\\" . "↳ ")
+        mu4e-headers-duplicate-prefix '("=" . "≡ ")))
 
 ;; --- WSL ---
 (setq default-directory "/home/shiloh/")

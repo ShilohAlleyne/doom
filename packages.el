@@ -18,6 +18,8 @@
 (package! dirvish
   :recipe (:host github :repo "alexluigit/dirvish"))
 
+(package! mu4e :built-in t)
+
 ;; --- Code ---
 (package! vundo
   :recipe (:host github :repo "casouri/vundo"))
@@ -32,6 +34,13 @@
 
 ;; --- Note Taking ---
 (package! denote)
+
 (package! org-modern)
-(package! org-modern-indent :recipe (:host github :repo "jdtsmith/org-modern-indent"))
+
+(package! org-modern-indent
+  :recipe (:host github :repo "jdtsmith/org-modern-indent"))
+
 (package! olivetti)
+
+(package! org-present
+  :recipe (:host github :repo "rlister/org-present"))
