@@ -40,6 +40,9 @@
 (package! org-modern-indent
   :recipe (:host github :repo "jdtsmith/org-modern-indent"))
 
+(package! org-fragtog
+  :recipe (:host github :repo "io12/org-fragtog"))
+
 (package! olivetti)
 
 (package! org-present

@@ -90,11 +90,21 @@
 (after! org
   (setq org-agenda-custom-commands
         '(("d" "Daily Dashboard"
-           ((agenda "" ((org-agenda-span 'day)))
+           ((agenda "" ((org-agenda-span 'day)
+                        (org-agenda-start-day nil)))  ; Forces view to Today
+
+            ;; 1. Standard Tasks (Grouped & sorted by Category)
             (tags-todo "CATEGORY!=\"reading\""
-                       ((org-agenda-overriding-header "Tasks")))
+                       ((org-agenda-overriding-header "Tasks")
+                        (org-agenda-sorting-strategy '(category-up priority-down))
+                        (org-agenda-prefix-format '((tags-todo . "  %-12c %?-12t% s")))))
+
+            ;; 2. Unified Reading List (READING items sorted to the top)
             (tags-todo "CATEGORY=\"reading\""
-                       ((org-agenda-overriding-header "Reading List"))))))))
+                       ((org-agenda-overriding-header "Reading List")
+                        (org-agenda-sorting-strategy '(todo-state-down priority-down))
+                        (org-agenda-prefix-format '((tags-todo . "  %-12c %?-12t% s"))))))))))
+
 
 (after! org
   (defun shaolin/auto-display-reading-clock ()
@@ -113,24 +123,26 @@
 
 (after! org
   (defun shaolin/org-focus-current-reading ()
-    "Collapse the file and reveal only items marked CURRENT."
+    "Collapse the file and reveal only items marked READING."
     (when (and (buffer-file-name)
                (string-suffix-p "reading-list.org" (buffer-file-name)))
 
       ;; 1. Fold everything down to just the top-level headers
       (org-overview)
 
-      ;; 2. Find all CURRENT headings and unfold them
+      ;; 2. Currently READING
       (org-map-entries
        (lambda ()
          (org-show-context)   ;; Expand parent folders so this heading is visible
          (org-show-entry)     ;; Expand the properties/logbook directly underneath it
          (org-show-children)) ;; Expand its immediate child headings (e.g., chapters)
-       "TODO=\"CURRENT\"" 'file)))
+       "TODO=\"READING\"" 'file)))
 
   ;; Run this automatically when opening an Org mode file
   (add-hook 'org-mode-hook #'shaolin/org-focus-current-reading))
 
+;; Inline Latex
+(add-hook 'org-mode-hook 'org-fragtog-mode)
 
 ;; Markdown Changes
 (custom-set-faces!
@@ -194,6 +206,17 @@
    ("M-b" . dirvish-history-go-backward)
    ("M-e" . dirvish-emerge-menu)))
 
+;; Allow Dired/Dirvish buffers to auto-refresh when files change
+(setq global-auto-revert-non-file-buffers t)
+
+;; Disable OS file notifications so Emacs falls back to active polling
+;; (Crucial for WSL mounts, network shares, and cross-boundary symlinks)
+(setq auto-revert-use-notify nil)
+
+;; Set poll interval in seconds (default is 5)
+(setq auto-revert-interval 2)
+
+(setq find-file-visit-truename t)
 
 ;; --- Code ---
 ;; (use-package indent-bars
@@ -232,11 +255,11 @@
   (setq with-editor-launcher 'with-editor-create-frame))
 
 ;;; --- Note Taking ---
-(setq org-directory "~/org/")
+(setq org-directory "~/second-brain/")
 
 ;; Force these variables to apply AFTER Org-mode is safely initialized
 (after! org
-  (setq org-agenda-files '("/home/shiloh/org")))
+  (setq org-agenda-files '("/home/shiloh/second-brain/")))
 
 (use-package! org-modern-indent
   :after org-modern
@@ -246,7 +269,7 @@
 ;; Denote
 (use-package! denote
   :config
-  (setq denote-directory (expand-file-name "~/org/"))
+  (setq denote-directory (expand-file-name "~/second-brain/"))
   (denote-rename-buffer-mode 1));
 ;
 ;; --- LaTeX/Math Rendering ---
@@ -406,6 +429,10 @@
   (interactive)
   (let ((clipboard-content (shell-command-to-string "powershell.exe -command 'Get-Clipboard'")))
     (insert (replace-regexp-in-string "\r" "" clipboard-content))))
+
+;; Force Emacs to open links in the default Windows browser
+(setq browse-url-browser-function 'browse-url-generic
+      browse-url-generic-program "explorer.exe")
 
 ;; (map! :leader
 ;;       (:prefix ("w" . "wsl")
