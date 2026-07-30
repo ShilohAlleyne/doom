@@ -91,20 +91,19 @@
   (setq org-agenda-custom-commands
         '(("d" "Daily Dashboard"
            ((agenda "" ((org-agenda-span 'day)
-                        (org-agenda-start-day nil)))  ; Forces view to Today
+                        (org-agenda-start-day nil)))  ; Pulls scheduled items/meetings automatically
 
-            ;; 1. Standard Tasks (Grouped & sorted by Category)
-            (tags-todo "CATEGORY!=\"reading\""
+            ;; 1. Standard Tasks (Explicitly excluding 'reading' AND 'MEETING')
+            (tags-todo "CATEGORY!=\"reading\"+TODO<>\"MEETING\""
                        ((org-agenda-overriding-header "Tasks")
-                        (org-agenda-sorting-strategy '(category-up priority-down))
+                        (org-agenda-sorting-strategy '(todo-state-up category-up priority-down))
                         (org-agenda-prefix-format '((tags-todo . "  %-12c %?-12t% s")))))
 
-            ;; 2. Unified Reading List (READING items sorted to the top)
+            ;; 2. Unified Reading List
             (tags-todo "CATEGORY=\"reading\""
                        ((org-agenda-overriding-header "Reading List")
                         (org-agenda-sorting-strategy '(todo-state-down priority-down))
                         (org-agenda-prefix-format '((tags-todo . "  %-12c %?-12t% s"))))))))))
-
 
 (after! org
   (defun shaolin/auto-display-reading-clock ()
@@ -255,11 +254,13 @@
   (setq with-editor-launcher 'with-editor-create-frame))
 
 ;;; --- Note Taking ---
-(setq org-directory "~/second-brain/")
+(setq org-directory "~/org/")
+(setq org-archive-location "~/org/archive.org::datree/")
+(setq org-agenda-hide-tags-regexp "ATTACH")
 
 ;; Force these variables to apply AFTER Org-mode is safely initialized
 (after! org
-  (setq org-agenda-files '("/home/shiloh/second-brain/")))
+  (setq org-agenda-files '("~/org/")))
 
 (use-package! org-modern-indent
   :after org-modern
@@ -269,7 +270,7 @@
 ;; Denote
 (use-package! denote
   :config
-  (setq denote-directory (expand-file-name "~/second-brain/"))
+  (setq denote-directory (expand-file-name "~/org/"))
   (denote-rename-buffer-mode 1));
 ;
 ;; --- LaTeX/Math Rendering ---
