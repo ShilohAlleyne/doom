@@ -83,8 +83,17 @@
   '(org-block-end-line   :inherit (fixed-pitch default) :foreground "#999999" :background nil)
 
   ;; Tables
-  '(org-table           :inherit fixed-pitch)
-  '(org-formula         :inherit fixed-pitch :foreground "#999999"))
+  '(org-table            :inherit fixed-pitch)
+  '(org-formula          :inherit fixed-pitch :foreground "#999999")
+
+  ;; Property values (e.g., the "14:10" in :ARCHIVE_TIME: 14:10)
+  '(org-property-value   :inherit fixed-pitch)
+
+  ;; Drawers and special keywords (e.g., :PROPERTIES:, :END:, #+BEGIN_SRC)
+  '(org-special-keyword  :inherit fixed-pitch)
+
+  ;; File-level metadata keywords (e.g., #+TITLE:, #+AUTHOR:, #+CATEGORY:)
+  '(org-meta-line        :inherit fixed-pitch))
 
 ;; A Scholar's Reading List Configuration
 (after! org
@@ -140,7 +149,10 @@
   ;; Run this automatically when opening an Org mode file
   (add-hook 'org-mode-hook #'shaolin/org-focus-current-reading))
 
-;; Inline Latex
+(with-eval-after-load 'org
+  (setq org-format-latex-options
+        (plist-put org-format-latex-options :justify 'center)))
+
 (add-hook 'org-mode-hook 'org-fragtog-mode)
 
 ;; Markdown Changes
@@ -388,7 +400,7 @@
 (after! pdf-tools
   (setq pdf-info-epdfinfo-program (executable-find "epdfinfo")))
 
-;; Email
+;; --- Email ---
 (set-email-account! "gmail"
   '((mu4e-sent-folder       . "/[Gmail]/Sent Mail")
     (mu4e-drafts-folder     . "/[Gmail]/Drafts")
@@ -414,6 +426,67 @@
         mu4e-headers-empty-parent-prefix '("-" . "  ")
         mu4e-headers-first-child-prefix '("\\" . "↳ ")
         mu4e-headers-duplicate-prefix '("=" . "≡ ")))
+
+;; --- Custom ---
+(defun org-cya-archive ()
+  "Archive current item to done.org file."
+  (interactive)
+
+  ;; Check if the current item is actually finished
+  (unless (member (org-get-todo-state) org-done-keywords)
+    (user-error "Task is not in a completed state. Mark it completed first!"))
+
+  (let* ((archive-file  (expand-file-name "done.org" org-directory))
+         (date-header   (format-time-string "%Y-%m-%d %a"))
+         (archive-time  (format-time-string "%H:%M"))
+         (original-file (or (buffer-file-name) (buffer-name)))
+
+         (raw-category  (org-get-category))
+         (category      (if (and raw-category (not (string-empty-p raw-category)))
+                            raw-category "N/A"))
+         (olpath        (mapconcat #'identity (org-get-outline-path) "/"))
+
+         ;; Extract string without touching the clipboard
+         (tree-text     (progn
+                          (org-mark-subtree)
+                          (let ((text (delete-and-extract-region (region-beginning) (region-end))))
+                            (deactivate-mark)
+                            text))))
+
+    ;; Check and create directory/file if missing
+    (unless (file-exists-p archive-file)
+      (make-directory (file-name-directory archive-file) t)
+      (append-to-file "" nil archive-file))
+
+    ;; Open done.org archive buffer in background
+    (let ((archive-buf (find-file-noselect archive-file)))
+      (with-current-buffer archive-buf
+        (save-restriction
+          (widen) ; Prevents crashes if done.org is open and folded
+          (save-excursion
+            (goto-char (point-min))
+
+            ;; Search and Paste (feeding our text variable directly into the paste command)
+            (if (re-search-forward (format "^\\* %s$" (regexp-quote date-header)) nil t)
+                (progn
+                  (forward-line 1)
+                  (org-paste-subtree 2 tree-text))
+              (progn
+                (goto-char (point-min))
+                (insert (format "* %s\n" date-header))
+                (org-paste-subtree 2 tree-text)))
+
+            ;; Inject Metadata
+            (org-back-to-heading t)
+            (org-entry-put (point) "ARCHIVE_TIME" archive-time)
+            (org-entry-put (point) "ARCHIVE_FILE" original-file)
+            (org-entry-put (point) "ARCHIVE_CATEGORY" category)
+            (when (not (string-empty-p olpath))
+              (org-entry-put (point) "ARCHIVE_OLPATH" olpath))))
+
+        (save-buffer)
+        (message "Successfully archived to %s under %s!"
+                 (file-name-nondirectory archive-file) date-header)))))
 
 ;; --- WSL ---
 (setq default-directory "/home/shiloh/")
