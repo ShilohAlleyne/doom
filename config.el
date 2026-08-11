@@ -155,6 +155,9 @@
                   (org-paste-subtree 2 tree-text))
               (progn
                 (goto-char (point-min))
+                (let ((missing-lines (forward-line 6)))
+                  (dotimes (_ missing-lines) (insert "\n")))
+                (unless (bolp) (insert "\n"))
                 (insert (format "* %s\n" date-header))
                 (org-paste-subtree 2 tree-text)))
 

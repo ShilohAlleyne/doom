@@ -259,6 +259,9 @@ This function first checks if the item is actually finished. It then extracts th
                   (org-paste-subtree 2 tree-text))
               (progn
                 (goto-char (point-min))
+                (let ((missing-lines (forward-line 6)))
+                  (dotimes (_ missing-lines) (insert "\n")))
+                (unless (bolp) (insert "\n"))
                 (insert (format "* %s\n" date-header))
                 (org-paste-subtree 2 tree-text)))
 
