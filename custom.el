@@ -5,7 +5,7 @@
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
  '(org-agenda-files
-   '("~/org/20260727T003216--reading-list.org"
+   '("~/org/done.org" "/home/shiloh/org/20260727T003216--reading-list.org"
      "/home/shiloh/org/20260728T090142--tasks.org")))
 
 (custom-set-faces
