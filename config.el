@@ -17,11 +17,14 @@
   (set-face-foreground face (face-attribute 'default :background)))
 (set-face-background 'fringe (face-attribute 'default :background))
 
-(setq doom-font                 (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22)
-      doom-variable-pitch-font (font-spec :family "Iosevka Aile" :size 22)
+(setq doom-font                (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22)
+      doom-variable-pitch-font (font-spec :family "Iosevka Aile"               :size 22)
       doom-serif-font          (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22))
 
 (setq doom-theme 'doom-nano-light)
+
+(add-hook '+doom-dashboard-mode-hook (lambda () (solaire-mode -1)))
+(add-hook 'org-agenda-mode-hook      (lambda () (solaire-mode -1)))
 
 (use-package! doom-nano-modeline
   :config
@@ -29,26 +32,14 @@
   (setq-default mode-line-format nil)
   (add-hook 'after-change-major-mode-hook (lambda () (setq mode-line-format nil))))
 
-(remove-hook '+doom-dashboard-functions #'doom-dashboard-widget-shortmenu)
+;; 1. Set the image globally so it's ready when the dashboard boots up
+(setq fancy-splash-image (expand-file-name "images/tha-brew-small.jpeg" doom-user-dir)
+      +doom-dashboard-banner-padding '(0 . 0))
 
-(defun shaolin/dashboard-quote ()
-  "Return a random quote from quotes.json."
-  (let* ((json-file (expand-file-name "quotes.json" doom-user-dir))
-         (json-object-type 'alist)
-         (json-array-type 'list))
-    (when (file-exists-p json-file)
-      (with-temp-buffer
-        (insert-file-contents json-file)
-        (let* ((quotes (json-read))
-               (random-quote (nth (random (length quotes)) quotes)))
-          (format "\"%s\"\n— %s (p. %s)"
-                  (cdr (assoc 'quote random-quote))
-                  (cdr (assoc 'source random-quote))
-                  (cdr (assoc 'page random-quote))))))))
-
-(setq fancy-splash-image "~/.config/doom/images/metamorfose-I.jpg"
-      +doom-dashboard-banner-padding '(0 . 0)
-      +doom-dashboard-banner-footer nil)
+;; 2. Prune the widgets after the dashboard module loads
+(after! doom-dashboard
+  (setq +doom-dashboard-functions
+        '(doom-dashboard-widget-banner)))
 
 (setq display-line-numbers-type 'relative)
 

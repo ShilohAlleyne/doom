@@ -2,9 +2,6 @@
 ;;; $DOOMDIR/packages.el
 
 ;; --- UI ---
-(package! nano-theme
-  :recipe (:host github :repo "rougier/nano-theme"))
-
 (package! nano-modeline
   :recipe (:host github :repo "rougier/nano-modeline"))
 

@@ -30,8 +30,8 @@ Clean up the general look of emacs. These settings are mostly from /nano-emacs/.
 ** Fonts
 
 #+begin_src elisp
-(setq doom-font                 (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22)
-      doom-variable-pitch-font (font-spec :family "Iosevka Aile" :size 22)
+(setq doom-font                (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22)
+      doom-variable-pitch-font (font-spec :family "Iosevka Aile"               :size 22)
       doom-serif-font          (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22))
 #+end_src
 
@@ -39,6 +39,9 @@ Clean up the general look of emacs. These settings are mostly from /nano-emacs/.
 
 #+begin_src elisp
 (setq doom-theme 'doom-nano-light)
+
+(add-hook '+doom-dashboard-mode-hook (lambda () (solaire-mode -1)))
+(add-hook 'org-agenda-mode-hook      (lambda () (solaire-mode -1)))
 #+end_src
 
 ** Mode-line
@@ -55,29 +58,17 @@ We use =doom-nano-modeline=. We also force the global bottom window modelines to
 
 ** Dashboard
 
-Set our dashboard image to some M.C Esher Art.
+Set our dashboard image to the wonderful /bitches brew/ art by Mati Klarwein.
 
-#+begin_src elisp
-(remove-hook '+doom-dashboard-functions #'doom-dashboard-widget-shortmenu)
+#+begin_src elisp :lexical t
+;; 1. Set the image globally so it's ready when the dashboard boots up
+(setq fancy-splash-image (expand-file-name "images/tha-brew-small.jpeg" doom-user-dir)
+      +doom-dashboard-banner-padding '(0 . 0))
 
-(defun shaolin/dashboard-quote ()
-  "Return a random quote from quotes.json."
-  (let* ((json-file (expand-file-name "quotes.json" doom-user-dir))
-         (json-object-type 'alist)
-         (json-array-type 'list))
-    (when (file-exists-p json-file)
-      (with-temp-buffer
-        (insert-file-contents json-file)
-        (let* ((quotes (json-read))
-               (random-quote (nth (random (length quotes)) quotes)))
-          (format "\"%s\"\n— %s (p. %s)"
-                  (cdr (assoc 'quote random-quote))
-                  (cdr (assoc 'source random-quote))
-                  (cdr (assoc 'page random-quote))))))))
-
-(setq fancy-splash-image "~/.config/doom/images/metamorfose-I.jpg"
-      +doom-dashboard-banner-padding '(0 . 0)
-      +doom-dashboard-banner-footer nil)
+;; 2. Prune the widgets after the dashboard module loads
+(after! doom-dashboard
+  (setq +doom-dashboard-functions
+        '(doom-dashboard-widget-banner)))
 #+end_src
 
 ** Line Numbers
@@ -174,7 +165,7 @@ This agenda view incorporates both our tasks todo-list and our academic reading 
                         (org-agenda-prefix-format '((tags-todo . "  %-12c %?-12t% s"))))))))))
 #+end_src
 
-*** Reading List
+** Reading List
 
 Settings for the reading list, based around time management.
 
