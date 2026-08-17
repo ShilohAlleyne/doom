@@ -17,11 +17,11 @@
   (set-face-foreground face (face-attribute 'default :background)))
 (set-face-background 'fringe (face-attribute 'default :background))
 
-(setq doom-font                 (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22)
-      doom-variable-pitch-font (font-spec :family "Iosevka Aile" :size 22)
-      doom-serif-font          (font-spec :family "IosevkaTerm Nerd Font Mono" :size 22))
+(setq doom-font                (font-spec :family "IosevkaTerm Nerd Font Mono" :size 30)
+      doom-variable-pitch-font (font-spec :family "Iosevka Aile"               :size 30)
+      doom-serif-font          (font-spec :family "IosevkaTerm Nerd Font Mono" :size 30))
 
-(setq doom-theme 'doom-nano-light)
+(setq doom-theme 'doom-nano-dorfic)
 
 (use-package! doom-nano-modeline
   :config
@@ -29,26 +29,8 @@
   (setq-default mode-line-format nil)
   (add-hook 'after-change-major-mode-hook (lambda () (setq mode-line-format nil))))
 
-(remove-hook '+doom-dashboard-functions #'doom-dashboard-widget-shortmenu)
-
-(defun shaolin/dashboard-quote ()
-  "Return a random quote from quotes.json."
-  (let* ((json-file (expand-file-name "quotes.json" doom-user-dir))
-         (json-object-type 'alist)
-         (json-array-type 'list))
-    (when (file-exists-p json-file)
-      (with-temp-buffer
-        (insert-file-contents json-file)
-        (let* ((quotes (json-read))
-               (random-quote (nth (random (length quotes)) quotes)))
-          (format "\"%s\"\n— %s (p. %s)"
-                  (cdr (assoc 'quote random-quote))
-                  (cdr (assoc 'source random-quote))
-                  (cdr (assoc 'page random-quote))))))))
-
-(setq fancy-splash-image "~/.config/doom/images/metamorfose-I.jpg"
-      +doom-dashboard-banner-padding '(0 . 0)
-      +doom-dashboard-banner-footer nil)
+(setq fancy-splash-image (expand-file-name "images/emacs-wildebeest-template.svg" doom-user-dir))
+(setq +doom-dashboard-banner-padding  '(4 . 0))
 
 (setq display-line-numbers-type 'relative)
 
@@ -155,6 +137,9 @@
                   (org-paste-subtree 2 tree-text))
               (progn
                 (goto-char (point-min))
+                (let ((missing-lines (forward-line 6)))
+                  (dotimes (_ missing-lines) (insert "\n")))
+                (unless (bolp) (insert "\n"))
                 (insert (format "* %s\n" date-header))
                 (org-paste-subtree 2 tree-text)))
 
@@ -344,6 +329,37 @@
               (face-remap-add-relative 'right-margin :background my-bg)
               (face-remap-add-relative 'term-default-bg-color :background my-bg))))
 
+(define-derived-mode daml-mode haskell-mode "Daml"
+  "Major mode for editing Daml smart contracts."
+
+  ;; Highlight Daml-specific keywords not found in standard Haskell
+  (font-lock-add-keywords
+   nil
+   `((,(concat "\\_<" (regexp-opt '("choice" "template" "interface" "nonconsuming"
+                                    "postconsuming" "preconsuming" "with") t) "\\_>")
+      . font-lock-keyword-face)
+     (,(concat "\\_<" (regexp-opt '("controller" "create" "exercise" "signatory"
+                                    "observer" "maintainer" "ensure" "key") t) "\\_>")
+      . font-lock-builtin-face))))
+
+(add-to-list 'auto-mode-alist '("\\.daml\\'" . daml-mode))
+
+(with-eval-after-load 'lsp-mode
+  (add-to-list 'lsp-language-id-configuration '(daml-mode . "daml"))
+  (lsp-register-client
+   (make-lsp-client :new-connection (lsp-stdio-connection '("daml" "damlc" "ide"))
+                    :major-modes '(daml-mode)
+                    :server-id 'damlc)))
+
+(defun shaolin/daml-lsp-hook ()
+  "Inject local paths and defer initialization of the language server."
+  (add-to-list 'exec-path (expand-file-name "~/.daml/bin"))
+  (setenv "PATH" (concat (expand-file-name "~/.daml/bin:") (getenv "PATH")))
+  (setq-local lsp-enable-symbol-highlighting nil)
+  (lsp-deferred))
+
+(add-hook 'daml-mode-hook #'shaolin/daml-lsp-hook)
+
 (set-email-account! "gmail"
   '((mu4e-sent-folder   . "/[Gmail]/Sent Mail")
     (mu4e-drafts-folder . "/[Gmail]/Drafts")
@@ -368,23 +384,11 @@
         mu4e-headers-first-child-prefix '("\\" . "↳ ")
         mu4e-headers-duplicate-prefix '("=" . "≡ ")))
 
-(after! server
-  (unless (server-running-p)
-    (server-start)))
+;; (after! server
+;;   (unless (server-running-p)
+;;     (server-start)))
 
 (setq default-directory "/home/shiloh/")
 
-(defun wsl-copy-region (start end)
-  "Copy region to Windows clipboard."
-  (interactive "r")
-  (shell-command-on-region start end "clip.exe")
-  (deactivate-mark))
-
-(defun wsl-paste-clipboard ()
-  "Paste from Windows clipboard into Emacs."
-  (interactive)
-  (let ((clipboard-content (shell-command-to-string "powershell.exe -command 'Get-Clipboard'")))
-    (insert (replace-regexp-in-string "\r" "" clipboard-content))))
-
 (setq browse-url-browser-function 'browse-url-generic
-      browse-url-generic-program "explorer.exe")
+      browse-url-generic-program "firefox")
