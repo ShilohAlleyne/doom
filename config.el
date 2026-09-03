@@ -75,6 +75,8 @@
                         (org-agenda-sorting-strategy '(todo-state-down priority-down))
                         (org-agenda-prefix-format '((tags-todo . "  %-12c %?-12t% s"))))))))))
 
+(setq org-agenda-todo-list-sublevels nil)
+
 (after! org
   (defun shaolin/auto-display-reading-clock ()
     "Automatically turn on org-clock-display for the reading list."
@@ -153,9 +155,112 @@
         (message "Successfully archived to %s under %s!"
                  (file-name-nondirectory archive-file) date-header)))))
 
+(defun org-cya-archive-recurring ()
+  "Archive a clone of the current recurring item to done.org."
+  (interactive)
+  (unless (org-at-heading-p)
+    (org-back-to-heading t))
+
+  (let* (;; Step 1: Detect the current state of the active item
+         (initial-state  (org-get-todo-state))
+         (_              (unless initial-state
+                           (user-error "No TODO or MEETING keyword found on this headline!")))
+
+         ;; Step 2: Dynamically tailor the allowed closed states based on item type
+         (allowed-states (if (string= initial-state "MEETING")
+                             '("HELD" "CANCELLED" "DNA" "DONE")
+                           '("DONE" "KILL" "CANCELLED")))
+         (chosen-state   (completing-read
+                          (format "Archive %s instance as state (default %s): "
+                                  initial-state (car allowed-states))
+                          allowed-states nil t nil nil (car allowed-states)))
+
+         (archive-file  (expand-file-name "done.org" org-directory))
+         (date-header   (format-time-string "%Y-%m-%d %a"))
+         (archive-time  (format-time-string "%H:%M"))
+         (original-file (or (buffer-file-name) (buffer-name)))
+         (raw-category  (org-get-category))
+         (category      (if (and raw-category (not (string-empty-p raw-category))) raw-category "N/A"))
+         (olpath        (mapconcat #'identity (org-get-outline-path) "/"))
+
+         ;; Step 3: Clone the current entry into the kill ring safely
+         (_             (save-excursion (org-copy-subtree)))
+
+         ;; Step 4: Transform the clone inside an isolated sandbox buffer
+         (processed-tree-text
+          (with-temp-buffer
+            (org-mode)
+            (org-paste-subtree 1)
+            (goto-char (point-min))
+
+            ;; Force the cloned heading to become a Level 2 (**) entry to match your archive standard
+            (let ((components (org-heading-components)))
+              (when components
+                (let ((level (car components)))
+                  (cond ((< level 2) (dotimes (_ (- 2 level)) (org-demote-subtree)))
+                        ((> level 2) (dotimes (_ (- level 2)) (org-promote-subtree)))))))
+
+            (goto-char (point-min))
+            ;; Swap out the active keyword for the user's chosen completed state
+            (let ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
+              (delete-region (line-beginning-position) (line-end-position))
+              (if (string-match "^\\(\\*+\\)\\s-+\\([A-Z-]+\\)\\s-+" line)
+                  (insert (replace-regexp-in-string "^\\(\\*+\\)\\s-+[A-Z-]+\\s-+" (format "\\1 %s " chosen-state) line))
+                (insert (replace-regexp-in-string "^\\(\\*+\\)\\s-*" (format "\\1 %s " chosen-state) line))))
+
+            ;; Strip active repeating time stamps so they don't break target agendas
+            (goto-char (point-min))
+            (while (re-search-forward org-scheduled-time-regexp nil t) (replace-match ""))
+            (goto-char (point-min))
+            (while (re-search-forward org-deadline-time-regexp nil t) (replace-match ""))
+
+            ;; Inject metadata blocks identically to your core system
+            (goto-char (point-min))
+            (org-back-to-heading t)
+            (org-entry-put (point) "ARCHIVE_TIME" archive-time)
+            (org-entry-put (point) "ARCHIVE_FILE" original-file)
+            (org-entry-put (point) "ARCHIVE_CATEGORY" category)
+            (unless (string-empty-p olpath)
+              (org-entry-put (point) "ARCHIVE_OLPATH" olpath))
+
+            ;; Clean trailing padding newlines picked up by org-copy/paste
+            (string-trim-right (buffer-substring-no-properties (point-min) (point-max))))))
+
+    ;; Step 5: Ensure target archive file exists on disk
+    (unless (file-exists-p archive-file)
+      (make-directory (file-name-directory archive-file) t)
+      (append-to-file "" nil archive-file))
+
+    ;; Step 6: Inject the processed text block directly into your layout using literal insert
+    (let ((archive-buf (find-file-noselect archive-file)))
+      (with-current-buffer archive-buf
+        (save-restriction
+          (widen)
+          (save-excursion
+            (goto-char (point-min))
+            (if (re-search-forward (format "^\\* %s$" (regexp-quote date-header)) nil t)
+                (progn
+                  (forward-line 1)
+                  (unless (bolp) (insert "\n"))
+                  ;; Insert item plus a strict single trailing line delimiter
+                  (insert processed-tree-text "\n"))
+              (progn
+                (goto-char (point-min))
+                (let ((missing-lines (forward-line 6)))
+                  (dotimes (_ missing-lines) (insert "\n")))
+                (unless (bolp) (insert "\n"))
+                (insert (format "* %s\n" date-header))
+                ;; Insert item plus a strict single trailing line delimiter
+                (insert processed-tree-text "\n")))))
+        (save-buffer)))
+
+    ;; Step 7: Push the original item loop forward in your active workspace file
+    (org-todo initial-state)
+    (message "Successfully logged recurring %s instance as %s!" initial-state chosen-state)))
+
 (after! org
   (setq org-preview-latex-default-process 'dvisvgm)
-  (setq org-format-latex-options (plist-put org-format-latex-options :scale 1.5))
+  (setq org-format-latex-options (plist-put org-format-latex-options :scale 1.0))
   (setq org-format-latex-options (plist-put org-format-latex-options :justify 'center)))
 
 (add-hook 'org-mode-hook 'org-fragtog-mode)
@@ -221,6 +326,13 @@
 
 (add-hook 'org-mode-hook #'setup-olivetti-layout)
 (add-hook 'markdown-mode-hook #'setup-olivetti-layout)
+
+(with-eval-after-load 'org
+  (add-to-list 'org-capture-templates
+               '("r" "Reading List (At Point)" entry
+                 (here)
+                 "*** UNREAD %^{Title}\n:PROPERTIES:\n:AUTHOR:   %^{Author}\n:TYPE:     %^{Type|Paper|Book|Article|Blog}\n:YEAR:     %^{Year}\n:LINK:     %^{Link}\n:Effort:   %^{Effort}\n:END:\n%?"
+                 :empty-lines 1)))
 
 (use-package dired
   :config
@@ -315,9 +427,19 @@
   (+shaolin/ghostel-at-project-root)
   (+popup/buffer))
 
+(defun +shaolin/ghostel-new-frame ()
+  "Launch a new Ghostel terminal in a dedicated GUI frame."
+  (interactive)
+  (select-frame (make-frame))
+  (ghostel))
+
 (map! :leader
       :desc "Ghostel terminal" "o T" #'+shaolin/ghostel-at-project-root
-      :desc "Ghostel popup"    "o t" #'+shaolin/ghostel-popup)
+      :desc "Ghostel popup"    "o t" #'+shaolin/ghostel-popup
+      :desc "Ghostel frame"    "o g" #'+shaolin/ghostel-new-frame)
+
+(setq explicit-shell-file-name "/home/shiloh/.nix-profile/bin/zsh")
+(setq shell-file-name "/home/shiloh/.nix-profile/bin/zsh")
 
 (add-hook 'ghostel-mode-hook
           (lambda ()
@@ -347,25 +469,42 @@
 (with-eval-after-load 'lsp-mode
   (add-to-list 'lsp-language-id-configuration '(daml-mode . "daml"))
   (lsp-register-client
-   (make-lsp-client :new-connection (lsp-stdio-connection '("daml" "damlc" "ide"))
+   (make-lsp-client :new-connection (lsp-stdio-connection '("dpm" "damlc" "ide"))
                     :major-modes '(daml-mode)
-                    :server-id 'damlc)))
+                    :server-id 'dpm-damlc)))
 
 (defun shaolin/daml-lsp-hook ()
-  "Inject local paths and defer initialization of the language server."
+  "Inject local paths and immediately execute the language server."
   (add-to-list 'exec-path (expand-file-name "~/.daml/bin"))
   (setenv "PATH" (concat (expand-file-name "~/.daml/bin:") (getenv "PATH")))
   (setq-local lsp-enable-symbol-highlighting nil)
-  (lsp-deferred))
+  (lsp))
 
 (add-hook 'daml-mode-hook #'shaolin/daml-lsp-hook)
+
+(add-to-list 'auto-mode-alist '("\\.sc\\'" . scala-mode))
+
+(use-package! typescript-mode
+  :mode "\\.ts\\'" ; set the mode as default for .ts files
+  :config
+  (require 'dap-node) ; enable the debugger
+  (dap-node-setup) ; setup the debugger
+  (setq typescript-indent-level 2)                         ; set typescript indent level
+  (add-hook 'typescript-mode-hook #'add-node-modules-path) ; for mono-repo support
+  (add-hook 'typescript-mode-hook #'prettier-js-mode))     ; use the prettier config of the project
+
+(use-package! typescript-tsx-mode ; automatically installed with (javascript +lsp)
+  :mode  "\\.tsx\\'" ; default for .tsx files
+  :config ; see above
+  (add-hook 'typescript-tsx-mode-hook #'add-node-modules-path)
+  (add-hook 'typescript-tsx-mode-hook #'prettier-js-mode))
 
 (set-email-account! "gmail"
   '((mu4e-sent-folder   . "/[Gmail]/Sent Mail")
     (mu4e-drafts-folder . "/[Gmail]/Drafts")
     (mu4e-trash-folder  . "/[Gmail]/Bin")
     (mu4e-refile-folder . "/[Gmail]/All Mail")
-    (smtpmail-smtp-user . "shiloh.t.alleyne@gmail.com"))
+    (smtpmail-smtp-user . "shiloh.alleyne@obsidian.systems"))
   t)
 
 (setq send-mail-function 'smtpmail-send-it

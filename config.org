@@ -156,6 +156,14 @@ This agenda view incorporates both our tasks todo-list and our academic reading 
                         (org-agenda-prefix-format '((tags-todo . "  %-12c %?-12t% s"))))))))))
 #+end_src
 
+**** TO-DO Levels
+
+Set Org Agenda to only show the top most TO-DO.
+
+#+begin_src elisp
+(setq org-agenda-todo-list-sublevels nil)
+#+end_src
+
 *** Reading List
 
 Settings for the reading list, based around time management.
@@ -201,6 +209,8 @@ This snippet focuses on papers which are currently being read, collapsing everyt
 *** Custom Archiving
 
 Archive completed tasks into =done.org= grouped under daily date headers.
+
+**** Archive regular TO-DO items
 
 This function first checks if the item is actually finished. It then extracts the subtree text without touching the clipboard. If =done.org= doesn't exist, it creates it. We widen the archive buffer to prevent crashes if it is folded, search for the date header, paste the text directly, and finally inject the archive metadata.
 
@@ -258,6 +268,118 @@ This function first checks if the item is actually finished. It then extracts th
                  (file-name-nondirectory archive-file) date-header)))))
 #+end_src
 
+**** Archive recurring TO-DO items
+
+To archive a recurring to-do item, we need to first extract a copy of the items sub-tree, change its state to =MEETING=, strip out the recurring signifier and then feed that to ~org-cya-archive~.
+
+#+begin_src elisp
+(defun org-cya-archive-recurring ()
+  "Archive a clone of the current recurring item to done.org."
+  (interactive)
+  (unless (org-at-heading-p)
+    (org-back-to-heading t))
+
+  (let* (;; Step 1: Detect the current state of the active item
+         (initial-state  (org-get-todo-state))
+         (_              (unless initial-state
+                           (user-error "No TODO or MEETING keyword found on this headline!")))
+
+         ;; Step 2: Dynamically tailor the allowed closed states based on item type
+         (allowed-states (if (string= initial-state "MEETING")
+                             '("HELD" "CANCELLED" "DNA" "DONE")
+                           '("DONE" "KILL" "CANCELLED")))
+         (chosen-state   (completing-read
+                          (format "Archive %s instance as state (default %s): "
+                                  initial-state (car allowed-states))
+                          allowed-states nil t nil nil (car allowed-states)))
+
+         (archive-file  (expand-file-name "done.org" org-directory))
+         (date-header   (format-time-string "%Y-%m-%d %a"))
+         (archive-time  (format-time-string "%H:%M"))
+         (original-file (or (buffer-file-name) (buffer-name)))
+         (raw-category  (org-get-category))
+         (category      (if (and raw-category (not (string-empty-p raw-category))) raw-category "N/A"))
+         (olpath        (mapconcat #'identity (org-get-outline-path) "/"))
+
+         ;; Step 3: Clone the current entry into the kill ring safely
+         (_             (save-excursion (org-copy-subtree)))
+
+         ;; Step 4: Transform the clone inside an isolated sandbox buffer
+         (processed-tree-text
+          (with-temp-buffer
+            (org-mode)
+            (org-paste-subtree 1)
+            (goto-char (point-min))
+
+            ;; Force the cloned heading to become a Level 2 (**) entry to match your archive standard
+            (let ((components (org-heading-components)))
+              (when components
+                (let ((level (car components)))
+                  (cond ((< level 2) (dotimes (_ (- 2 level)) (org-demote-subtree)))
+                        ((> level 2) (dotimes (_ (- level 2)) (org-promote-subtree)))))))
+
+            (goto-char (point-min))
+            ;; Swap out the active keyword for the user's chosen completed state
+            (let ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
+              (delete-region (line-beginning-position) (line-end-position))
+              (if (string-match "^\\(\\*+\\)\\s-+\\([A-Z-]+\\)\\s-+" line)
+                  (insert (replace-regexp-in-string "^\\(\\*+\\)\\s-+[A-Z-]+\\s-+" (format "\\1 %s " chosen-state) line))
+                (insert (replace-regexp-in-string "^\\(\\*+\\)\\s-*" (format "\\1 %s " chosen-state) line))))
+
+            ;; Strip active repeating time stamps so they don't break target agendas
+            (goto-char (point-min))
+            (while (re-search-forward org-scheduled-time-regexp nil t) (replace-match ""))
+            (goto-char (point-min))
+            (while (re-search-forward org-deadline-time-regexp nil t) (replace-match ""))
+
+            ;; Inject metadata blocks identically to your core system
+            (goto-char (point-min))
+            (org-back-to-heading t)
+            (org-entry-put (point) "ARCHIVE_TIME" archive-time)
+            (org-entry-put (point) "ARCHIVE_FILE" original-file)
+            (org-entry-put (point) "ARCHIVE_CATEGORY" category)
+            (unless (string-empty-p olpath)
+              (org-entry-put (point) "ARCHIVE_OLPATH" olpath))
+
+            ;; Clean trailing padding newlines picked up by org-copy/paste
+            (string-trim-right (buffer-substring-no-properties (point-min) (point-max))))))
+
+    ;; Step 5: Ensure target archive file exists on disk
+    (unless (file-exists-p archive-file)
+      (make-directory (file-name-directory archive-file) t)
+      (append-to-file "" nil archive-file))
+
+    ;; Step 6: Inject the processed text block directly into your layout using literal insert
+    (let ((archive-buf (find-file-noselect archive-file)))
+      (with-current-buffer archive-buf
+        (save-restriction
+          (widen)
+          (save-excursion
+            (goto-char (point-min))
+            (if (re-search-forward (format "^\\* %s$" (regexp-quote date-header)) nil t)
+                (progn
+                  (forward-line 1)
+                  (unless (bolp) (insert "\n"))
+                  ;; Insert item plus a strict single trailing line delimiter
+                  (insert processed-tree-text "\n"))
+              (progn
+                (goto-char (point-min))
+                (let ((missing-lines (forward-line 6)))
+                  (dotimes (_ missing-lines) (insert "\n")))
+                (unless (bolp) (insert "\n"))
+                (insert (format "* %s\n" date-header))
+                ;; Insert item plus a strict single trailing line delimiter
+                (insert processed-tree-text "\n")))))
+        (save-buffer)))
+
+    ;; Step 7: Push the original item loop forward in your active workspace file
+    (org-todo initial-state)
+    (message "Successfully logged recurring %s instance as %s!" initial-state chosen-state)))
+#+end_src
+
+#+RESULTS:
+: org-cya-archive-recurring-instance2
+
 *** Latex
 **** Org-Fragtog
 
@@ -266,7 +388,7 @@ We can automatically render Latex blocks with =org-fragtog=. We use =dvisvgm= fo
 #+begin_src elisp
 (after! org
   (setq org-preview-latex-default-process 'dvisvgm)
-  (setq org-format-latex-options (plist-put org-format-latex-options :scale 1.5))
+  (setq org-format-latex-options (plist-put org-format-latex-options :scale 1.0))
   (setq org-format-latex-options (plist-put org-format-latex-options :justify 'center)))
 
 (add-hook 'org-mode-hook 'org-fragtog-mode)
@@ -395,6 +517,19 @@ We don't use =olivetti= on typst buffers as they are more programmatic.
 (add-hook 'markdown-mode-hook #'setup-olivetti-layout)
 #+end_src
 
+** Org Capture
+
+This is a simple org-capture for adding new entries to the reading list. It inserts a new entry at the current cursor position.
+
+#+begin_src elisp
+(with-eval-after-load 'org
+  (add-to-list 'org-capture-templates
+               '("r" "Reading List (At Point)" entry
+                 (here)
+                 "*** UNREAD %^{Title}\n:PROPERTIES:\n:AUTHOR:   %^{Author}\n:TYPE:     %^{Type|Paper|Book|Article|Blog}\n:YEAR:     %^{Year}\n:LINK:     %^{Link}\n:Effort:   %^{Effort}\n:END:\n%?"
+                 :empty-lines 1)))
+#+end_src
+
 * File Management
 
 Dired improvements with Dirvish.
@@ -516,7 +651,7 @@ Set default global indentation to 4 spaces, using spaces instead of actual tab c
   :hook (ghostel-mode . evil-ghostel-mode))
 #+end_src
 
-*** Custom
+**** Custom
 
 Open =ghostel= terminal in project root.
 
@@ -538,12 +673,32 @@ Open =ghostel= terminal in a popup buffer.
   (+popup/buffer))
 #+end_src
 
-*** Keybindings
+Open =ghostel= terminal in a new emacs frame.
+
+#+begin_src elisp
+(defun +shaolin/ghostel-new-frame ()
+  "Launch a new Ghostel terminal in a dedicated GUI frame."
+  (interactive)
+  (select-frame (make-frame))
+  (ghostel))
+#+end_src
+
+***** Keybindings
 
 #+begin_src elisp
 (map! :leader
       :desc "Ghostel terminal" "o T" #'+shaolin/ghostel-at-project-root
-      :desc "Ghostel popup"    "o t" #'+shaolin/ghostel-popup)
+      :desc "Ghostel popup"    "o t" #'+shaolin/ghostel-popup
+      :desc "Ghostel frame"    "o g" #'+shaolin/ghostel-new-frame)
+#+end_src
+
+*** Shell
+
+Set =zsh= as emacs shell.
+
+#+begin_src elisp
+(setq explicit-shell-file-name "/home/shiloh/.nix-profile/bin/zsh")
+(setq shell-file-name "/home/shiloh/.nix-profile/bin/zsh")
 #+end_src
 
 *** Visuals
@@ -562,7 +717,8 @@ Clean up the terminal visuals to match the theme. We keep the margins but clear 
               (face-remap-add-relative 'term-default-bg-color :background my-bg))))
 #+end_src
 
-** DAML
+** Language Specific Configs
+*** DAML
 
 We'll use a lot of =lsp-mode= features. First we define a virtual major mode for daml using =haskell-mode= as the engine.
 
@@ -593,29 +749,61 @@ We also need to register the =daml-sdk= binary as client for =lsp-mode=.
 (with-eval-after-load 'lsp-mode
   (add-to-list 'lsp-language-id-configuration '(daml-mode . "daml"))
   (lsp-register-client
-   (make-lsp-client :new-connection (lsp-stdio-connection '("daml" "damlc" "ide"))
+   (make-lsp-client :new-connection (lsp-stdio-connection '("dpm" "damlc" "ide"))
                     :major-modes '(daml-mode)
-                    :server-id 'damlc)))
+                    :server-id 'dpm-damlc)))
 #+end_src
 
-Add hooks for the daml lsp to =lsp-mode=.
+Add hooks to immediately run the daml lsp.
 
 #+begin_src elisp
 (defun shaolin/daml-lsp-hook ()
-  "Inject local paths and defer initialization of the language server."
+  "Inject local paths and immediately execute the language server."
   (add-to-list 'exec-path (expand-file-name "~/.daml/bin"))
   (setenv "PATH" (concat (expand-file-name "~/.daml/bin:") (getenv "PATH")))
   (setq-local lsp-enable-symbol-highlighting nil)
-  (lsp-deferred))
+  (lsp))
 
 (add-hook 'daml-mode-hook #'shaolin/daml-lsp-hook)
 #+end_src
 
-* Communications
+*** Scala
 
+Have Emacs recognise Scala =.sc= file extensions.
+
+#+begin_src elisp
+(add-to-list 'auto-mode-alist '("\\.sc\\'" . scala-mode))
+#+end_src
+
+*** Typescript
+
+Add typescript language server
+
+#+begin_src elisp
+(use-package! typescript-mode
+  :mode "\\.ts\\'" ; set the mode as default for .ts files
+  :config
+  (require 'dap-node) ; enable the debugger
+  (dap-node-setup) ; setup the debugger
+  (setq typescript-indent-level 2)                         ; set typescript indent level
+  (add-hook 'typescript-mode-hook #'add-node-modules-path) ; for mono-repo support
+  (add-hook 'typescript-mode-hook #'prettier-js-mode))     ; use the prettier config of the project
+#+end_src
+
+Add React language server
+
+#+begin_src elisp
+(use-package! typescript-tsx-mode ; automatically installed with (javascript +lsp)
+  :mode  "\\.tsx\\'" ; default for .tsx files
+  :config ; see above
+  (add-hook 'typescript-tsx-mode-hook #'add-node-modules-path)
+  (add-hook 'typescript-tsx-mode-hook #'prettier-js-mode))
+#+end_src
+
+* Communications
 ** Email
 
-Configure our default Gmail account. The modeline is updated to show unread mail counts, and we use sleek Unicode characters for thread tree indicators.
+Configure our default Gmail account. The modeline is updated to show unread mail counts.
 
 #+begin_src elisp
 (set-email-account! "gmail"
@@ -623,7 +811,7 @@ Configure our default Gmail account. The modeline is updated to show unread mail
     (mu4e-drafts-folder . "/[Gmail]/Drafts")
     (mu4e-trash-folder  . "/[Gmail]/Bin")
     (mu4e-refile-folder . "/[Gmail]/All Mail")
-    (smtpmail-smtp-user . "shiloh.t.alleyne@gmail.com"))
+    (smtpmail-smtp-user . "shiloh.alleyne@obsidian.systems"))
   t)
 
 (setq send-mail-function 'smtpmail-send-it
