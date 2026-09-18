@@ -416,7 +416,7 @@
   :hook (ghostel-mode . evil-ghostel-mode))
 
 (defun +shaolin/ghostel-at-project-root ()
-  "Launch ghostel at the project root."
+  "Launch Ghostel at the project root."
   (interactive)
   (let ((default-directory (projectile-project-root)))
     (ghostel)))
@@ -427,16 +427,37 @@
   (+shaolin/ghostel-at-project-root)
   (+popup/buffer))
 
-(defun +shaolin/ghostel-new-frame ()
+(defun +shaolin/ghostel-frame ()
   "Launch a new Ghostel terminal in a dedicated GUI frame."
   (interactive)
   (select-frame (make-frame))
   (ghostel))
 
+(defun +shaolin/ghostel-new-frame ()
+  "Launch a brand new isolated Ghostel terminal in a dedicated GUI frame."
+  (interactive)
+  (select-frame (make-frame))
+  (ghostel '(4)))
+
+(defun +shaolin/ghostel-new ()
+  "Launch a brand new isolated Ghostel terminal instance."
+  (interactive)
+  (ghostel '(4)))
+
+(defun +shaolin/ghostel-new-at-project-root ()
+  "Lanuch a isolated Ghostel terminal at project root"
+  (interactive)
+  (let ((default-directory (projectile-project-root)))
+    (ghostel '(4))))
+
 (map! :leader
-      :desc "Ghostel terminal" "o T" #'+shaolin/ghostel-at-project-root
-      :desc "Ghostel popup"    "o t" #'+shaolin/ghostel-popup
-      :desc "Ghostel frame"    "o g" #'+shaolin/ghostel-new-frame)
+      (:prefix ("o t" . "terminal")
+       :desc "At project root"              "t" #'+shaolin/ghostel-at-project-root
+       :desc "Popup buffer"                 "p" #'+shaolin/ghostel-popup
+       :desc "Open new Frame"               "f" #'+shaolin/ghostel-frame
+       :desc "Open new Frame Isolated"      "F" #'+shaolin/ghostel-new-frame
+       :desc "New isolated"                 "n" #'+shaolin/ghostel-new
+       :desc "New isolated at project root" "N" #'+shaolin/ghostel-new-at-project-root))
 
 (setq explicit-shell-file-name "/home/shiloh/.nix-profile/bin/zsh")
 (setq shell-file-name "/home/shiloh/.nix-profile/bin/zsh")
@@ -454,7 +475,6 @@
 (define-derived-mode daml-mode haskell-mode "Daml"
   "Major mode for editing Daml smart contracts."
 
-  ;; Highlight Daml-specific keywords not found in standard Haskell
   (font-lock-add-keywords
    nil
    `((,(concat "\\_<" (regexp-opt '("choice" "template" "interface" "nonconsuming"
@@ -474,30 +494,30 @@
                     :server-id 'dpm-damlc)))
 
 (defun shaolin/daml-lsp-hook ()
-  "Inject local paths and immediately execute the language server."
+  "Inject local paths and run the server immediately."
   (add-to-list 'exec-path (expand-file-name "~/.daml/bin"))
   (setenv "PATH" (concat (expand-file-name "~/.daml/bin:") (getenv "PATH")))
+  
+  ;; Doom-specific LSP capability bypasses
   (setq-local lsp-enable-symbol-highlighting nil)
+  
   (lsp))
 
 (add-hook 'daml-mode-hook #'shaolin/daml-lsp-hook)
 
 (add-to-list 'auto-mode-alist '("\\.sc\\'" . scala-mode))
 
-(use-package! typescript-mode
-  :mode "\\.ts\\'" ; set the mode as default for .ts files
-  :config
-  (require 'dap-node) ; enable the debugger
-  (dap-node-setup) ; setup the debugger
-  (setq typescript-indent-level 2)                         ; set typescript indent level
-  (add-hook 'typescript-mode-hook #'add-node-modules-path) ; for mono-repo support
-  (add-hook 'typescript-mode-hook #'prettier-js-mode))     ; use the prettier config of the project
+(after! typescript-mode
+  ;; Set intentation level globally for standard typescript-mode
+  (setq typescript-indent-level 2))
 
-(use-package! typescript-tsx-mode ; automatically installed with (javascript +lsp)
-  :mode  "\\.tsx\\'" ; default for .tsx files
-  :config ; see above
-  (add-hook 'typescript-tsx-mode-hook #'add-node-modules-path)
-  (add-hook 'typescript-tsx-mode-hook #'prettier-js-mode))
+(after! rjsx-mode
+  ;; If Doom falls back to rjsx-mode/web-mode for JSX/TSX components
+  (setq js2-basic-offset 2))
+
+;; Automatically locate local node_modules bins for mono-repos
+(use-package! add-node-modules-path
+  :hook ((typescript-mode tsx-ts-mode typescript-ts-mode rjsx-mode) . add-node-modules-path))
 
 (set-email-account! "gmail"
   '((mu4e-sent-folder   . "/[Gmail]/Sent Mail")

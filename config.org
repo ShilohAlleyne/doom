@@ -377,9 +377,6 @@ To archive a recurring to-do item, we need to first extract a copy of the items 
     (message "Successfully logged recurring %s instance as %s!" initial-state chosen-state)))
 #+end_src
 
-#+RESULTS:
-: org-cya-archive-recurring-instance2
-
 *** Latex
 **** Org-Fragtog
 
@@ -657,7 +654,7 @@ Open =ghostel= terminal in project root.
 
 #+begin_src elisp
 (defun +shaolin/ghostel-at-project-root ()
-  "Launch ghostel at the project root."
+  "Launch Ghostel at the project root."
   (interactive)
   (let ((default-directory (projectile-project-root)))
     (ghostel)))
@@ -676,20 +673,45 @@ Open =ghostel= terminal in a popup buffer.
 Open =ghostel= terminal in a new emacs frame.
 
 #+begin_src elisp
-(defun +shaolin/ghostel-new-frame ()
+(defun +shaolin/ghostel-frame ()
   "Launch a new Ghostel terminal in a dedicated GUI frame."
   (interactive)
   (select-frame (make-frame))
   (ghostel))
+
+(defun +shaolin/ghostel-new-frame ()
+  "Launch a brand new isolated Ghostel terminal in a dedicated GUI frame."
+  (interactive)
+  (select-frame (make-frame))
+  (ghostel '(4)))
+#+end_src
+
+Open a standard new =ghostel= instance.
+
+#+begin_src elisp
+(defun +shaolin/ghostel-new ()
+  "Launch a brand new isolated Ghostel terminal instance."
+  (interactive)
+  (ghostel '(4)))
+
+(defun +shaolin/ghostel-new-at-project-root ()
+  "Lanuch a isolated Ghostel terminal at project root"
+  (interactive)
+  (let ((default-directory (projectile-project-root)))
+    (ghostel '(4))))
 #+end_src
 
 ***** Keybindings
 
 #+begin_src elisp
 (map! :leader
-      :desc "Ghostel terminal" "o T" #'+shaolin/ghostel-at-project-root
-      :desc "Ghostel popup"    "o t" #'+shaolin/ghostel-popup
-      :desc "Ghostel frame"    "o g" #'+shaolin/ghostel-new-frame)
+      (:prefix ("o t" . "terminal")
+       :desc "At project root"              "t" #'+shaolin/ghostel-at-project-root
+       :desc "Popup buffer"                 "p" #'+shaolin/ghostel-popup
+       :desc "Open new Frame"               "f" #'+shaolin/ghostel-frame
+       :desc "Open new Frame Isolated"      "F" #'+shaolin/ghostel-new-frame
+       :desc "New isolated"                 "n" #'+shaolin/ghostel-new
+       :desc "New isolated at project root" "N" #'+shaolin/ghostel-new-at-project-root))
 #+end_src
 
 *** Shell
@@ -720,13 +742,12 @@ Clean up the terminal visuals to match the theme. We keep the margins but clear 
 ** Language Specific Configs
 *** DAML
 
-We'll use a lot of =lsp-mode= features. First we define a virtual major mode for daml using =haskell-mode= as the engine.
+We define a virtual major mode for daml using =haskell-mode= as the engine.
 
 #+begin_src elisp
 (define-derived-mode daml-mode haskell-mode "Daml"
   "Major mode for editing Daml smart contracts."
 
-  ;; Highlight Daml-specific keywords not found in standard Haskell
   (font-lock-add-keywords
    nil
    `((,(concat "\\_<" (regexp-opt '("choice" "template" "interface" "nonconsuming"
@@ -737,13 +758,13 @@ We'll use a lot of =lsp-mode= features. First we define a virtual major mode for
       . font-lock-builtin-face))))
 #+end_src
 
-We can then bind it to launch whenever a =.daml= file is opened.
+We then bind it to launch whenever a =.daml= file is opened.
 
 #+begin_src elisp
 (add-to-list 'auto-mode-alist '("\\.daml\\'" . daml-mode))
 #+end_src
 
-We also need to register the =daml-sdk= binary as client for =lsp-mode=.
+We register the =daml-sdk= binary as a client for =lsp-mode=.
 
 #+begin_src elisp
 (with-eval-after-load 'lsp-mode
@@ -754,18 +775,21 @@ We also need to register the =daml-sdk= binary as client for =lsp-mode=.
                     :server-id 'dpm-damlc)))
 #+end_src
 
-Add hooks to immediately run the daml lsp.
+Add hooks to immediately run the daml lsp, tailored for Doom Emacs.
 
 #+begin_src elisp
 (defun shaolin/daml-lsp-hook ()
-  "Inject local paths and immediately execute the language server."
+  "Inject local paths and run the server immediately."
   (add-to-list 'exec-path (expand-file-name "~/.daml/bin"))
   (setenv "PATH" (concat (expand-file-name "~/.daml/bin:") (getenv "PATH")))
+  
+  ;; Doom-specific LSP capability bypasses
   (setq-local lsp-enable-symbol-highlighting nil)
+  
   (lsp))
 
 (add-hook 'daml-mode-hook #'shaolin/daml-lsp-hook)
-#+end_src
+#+END_SRC
 
 *** Scala
 
@@ -775,29 +799,23 @@ Have Emacs recognise Scala =.sc= file extensions.
 (add-to-list 'auto-mode-alist '("\\.sc\\'" . scala-mode))
 #+end_src
 
-*** Typescript
+*** TypeScript & React
 
-Add typescript language server
-
-#+begin_src elisp
-(use-package! typescript-mode
-  :mode "\\.ts\\'" ; set the mode as default for .ts files
-  :config
-  (require 'dap-node) ; enable the debugger
-  (dap-node-setup) ; setup the debugger
-  (setq typescript-indent-level 2)                         ; set typescript indent level
-  (add-hook 'typescript-mode-hook #'add-node-modules-path) ; for mono-repo support
-  (add-hook 'typescript-mode-hook #'prettier-js-mode))     ; use the prettier config of the project
-#+end_src
-
-Add React language server
+Configure specific preferences for TypeScript and TSX development. Doom handles
+LSP, Tree-sitter, and basic mode mapping automatically via the `(javascript +lsp)` module.
 
 #+begin_src elisp
-(use-package! typescript-tsx-mode ; automatically installed with (javascript +lsp)
-  :mode  "\\.tsx\\'" ; default for .tsx files
-  :config ; see above
-  (add-hook 'typescript-tsx-mode-hook #'add-node-modules-path)
-  (add-hook 'typescript-tsx-mode-hook #'prettier-js-mode))
+(after! typescript-mode
+  ;; Set intentation level globally for standard typescript-mode
+  (setq typescript-indent-level 2))
+
+(after! rjsx-mode
+  ;; If Doom falls back to rjsx-mode/web-mode for JSX/TSX components
+  (setq js2-basic-offset 2))
+
+;; Automatically locate local node_modules bins for mono-repos
+(use-package! add-node-modules-path
+  :hook ((typescript-mode tsx-ts-mode typescript-ts-mode rjsx-mode) . add-node-modules-path))
 #+end_src
 
 * Communications

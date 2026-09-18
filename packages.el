@@ -32,6 +32,9 @@
 
 (package! evil-ghostel)
 
+(package! add-node-modules-path
+  :recipe (:host github :repo "codesuki/add-node-modules-path"))
+
 ;; --- Note Taking ---
 (package! denote)
 
