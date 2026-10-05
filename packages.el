@@ -35,6 +35,10 @@
 (package! add-node-modules-path
   :recipe (:host github :repo "codesuki/add-node-modules-path"))
 
+(package! shell-maker)
+(package! acp)
+(package! agent-shell)
+
 ;; --- Note Taking ---
 (package! denote)
 
